@@ -1,0 +1,6 @@
+{
+    "extraPaths": [
+        "./src",
+        "./third_party/sam2"
+    ]
+}

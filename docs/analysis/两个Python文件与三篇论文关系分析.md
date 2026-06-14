@@ -1,19 +1,21 @@
 # 两个 Python 文件与三篇论文的关系分析
 
+> 项目结构迁移说明：原 `SAM2UNet.py` 现位于 `src/sam2unet/baseline.py`，原 `SAM2UNet_dblock_dat_fused_rfbhou.py` 现位于 `src/sam2unet/experimental_darkir.py`。下文保留旧文件名用于对应原始分析语境。
+
 ## 1. 分析对象
 
 ### Python 文件
 
-1. `SAM2UNet.py`
-2. `SAM2UNet_dblock_dat_fused_rfbhou.py`
+1. `src/sam2unet/baseline.py`
+2. `src/sam2unet/experimental_darkir.py`
 
 ### PDF 论文
 
-1. `sam2unet.pdf`  
+1. `docs/papers/sam2unet.pdf`  
    **SAM2-UNet: Segment Anything 2 Makes Strong Encoder for Natural and Medical Image Segmentation**
-2. `DarkIR.pdf`  
+2. `docs/papers/DarkIR.pdf`  
    **DarkIR: Robust Low-Light Image Restoration**
-3. `ParameterNet.pdf`  
+3. `docs/papers/ParameterNet.pdf`  
    **ParameterNet: Parameters Are All You Need**
 
 本报告依据本地代码和 PDF 正文进行对应分析。这里的“关系”分为：

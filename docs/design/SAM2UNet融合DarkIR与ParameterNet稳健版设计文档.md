@@ -9,8 +9,8 @@
 
 设计遵循以下原则：
 
-1. 保留 `SAM2UNet.py` 作为不可变基线，确保实验结果可复现。
-2. 保留 `SAM2UNet_dblock_dat_fused_rfbhou.py` 作为已有实验版本，不继续叠加新变量。
+1. 保留 `src/sam2unet/baseline.py` 作为基线，确保实验结果可复现。
+2. 保留 `src/sam2unet/experimental_darkir.py` 作为已有实验版本，不继续叠加新变量。
 3. 新建独立融合模型，避免修改冻结的 SAM2 Hiera 主干。
 4. DarkIR 与 ParameterNet 分别作用于特征增强和动态投影，保证可以独立消融。
 5. 不使用当前实验文件中的 `DynamicAdaptiveTanh`，避免引入无法归因于三篇论文的额外变量。
@@ -49,21 +49,21 @@ DarkIR 空间/频域特征增强
 
 ### 3.1 保持不变的文件
 
-- `SAM2UNet.py`  
+- `src/sam2unet/baseline.py`  
   原始论文基线。不得加入 DarkIR 或 ParameterNet 模块。
 
-- `SAM2UNet_dblock_dat_fused_rfbhou.py`  
+- `src/sam2unet/experimental_darkir.py`  
   当前 DBlock_DAT 与 FusedEnhanceBlock 实验版本。保留用于横向比较，不继续修改。
 
 ### 3.2 建议新增的文件
 
 | 文件 | 职责 |
 |---|---|
-| `SAM2UNet_darkir_parameternet.py` | 定义动态投影、DarkIR 增强块、特征桥接层和完整融合模型 |
+| `src/sam2unet/fusion.py` | 定义动态投影、DarkIR 增强块、特征桥接层和完整融合模型 |
 | `tests/test_darkir_parameternet_blocks.py` | 测试动态卷积、路由、频域分支和残差初始化 |
 | `tests/test_sam2unet_fusion.py` | 测试不同消融模式和完整模型输出接口 |
 
-新增文件可以复用 `SAM2UNet.py` 中的 `Adapter`、`Up` 和 `RFB_modified`，但不能改变这些基线类的行为。
+融合模块可以复用 `src/sam2unet/baseline.py` 中的 `Adapter`、`Up` 和 `RFB_modified`，但不能改变这些基线类的行为。
 
 ---
 
@@ -546,7 +546,7 @@ M = 1、2、4、8
 
 ### 11.4 对已有实验文件的比较
 
-可将 `SAM2UNet_dblock_dat_fused_rfbhou.py` 作为额外对照组，回答：
+可将 `src/sam2unet/experimental_darkir.py` 作为额外对照组，回答：
 
 - 真正的 ParameterNet 动态卷积是否优于 `DynamicAdaptiveTanh`？
 - 稳健版加性 FreMLP 残差是否优于现有乘性频域融合？
@@ -590,7 +590,7 @@ M = 1、2、4、8
 - 输入 `352×352` 时三个输出尺寸与基线一致；
 - 加载基线 checkpoint 时能够使用 `strict=False` 初始化公共部分；
 - 新模型 checkpoint 保存 `bridge_mode` 和 `num_experts` 配置；
-- `SAM2UNet.py` 的基线行为未被修改。
+- `src/sam2unet/baseline.py` 的基线网络行为未被修改。
 
 ---
 
@@ -644,11 +644,11 @@ M = 1、2、4、8
 
 ## 15. 不采用的方案
 
-### 15.1 直接修改 `SAM2UNet.py`
+### 15.1 直接修改基线网络结构
 
 不采用。该文件需要作为论文基线，直接修改会失去可靠对照。
 
-### 15.2 继续在 `SAM2UNet_dblock_dat_fused_rfbhou.py` 中叠加模块
+### 15.2 继续在 `src/sam2unet/experimental_darkir.py` 中叠加模块
 
 不采用。该文件已经混合 DBlock_DAT、DynamicAdaptiveTanh 和 FusedEnhanceBlock，继续叠加真正的 ParameterNet 动态卷积会使实验难以归因。
 
@@ -670,7 +670,7 @@ M = 1、2、4、8
 
 建议按照以下顺序实施：
 
-1. 新建 `SAM2UNet_darkir_parameternet.py`，先实现静态 `FeatureBridge` 和模型模式切换。
+1. 新建 `src/sam2unet/fusion.py`，先实现静态 `FeatureBridge` 和模型模式切换。
 2. 实现并测试 `ParameterNetDynamicProjection`。
 3. 实现并测试 DarkIR 空间分支。
 4. 实现并测试 DarkIR 频域分支。
