@@ -1,0 +1,16 @@
+{
+  "pranet_train": {
+    "source": "https://github.com/DengPingFan/PraNet",
+    "google_drive_file_id": "1YiGHLw4iTvKdvbT6MgwO9zcCv8zJ_Bnb",
+    "archive": "data/polyps/archives/PraNet-TrainDataset.zip",
+    "sha256": "30C99744DF6770A4F514F8CCFA7404291BA968079EA3B6E3231AE74AD2B247CC"
+  },
+  "kvasir_seg": {
+    "archive": "data/polyps/archives/kvasir-seg.zip",
+    "sha256": "03B30E21D584E04FACF49397A2576738FD626815771AFBBF788F74A7153478F7"
+  },
+  "cvc_clinicdb": {
+    "archive": "data/polyps/archives/CVC-ClinicDB.zip",
+    "sha256": "C76EAFAE71960364B647442D3D620B9312D201059A712D257FA55E652AC45386"
+  }
+}

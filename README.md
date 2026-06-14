@@ -1,79 +1,59 @@
 # SAM2-UNet DarkIR + ParameterNet 稳健融合版
 
-本项目包含三个 SAM2-UNet 模型变体，并采用标准 `src` Python 包布局：
+本目录在保留 `SAM2UNet.py` 与 `SAM2UNet_dblock_dat_fused_rfbhou.py` 不变的前提下，新增了 `SAM2UNet_darkir_parameternet.py`。新模型将 ParameterNet 风格的多专家动态 `1x1` 投影与 DarkIR 启发的空间/频域特征增强放入统一 `FeatureBridge`，并保留 SAM2-UNet 的三级 U-Net 解码器与三个分割输出。
 
-```text
-qzx/
-├─ src/sam2unet/
-│  ├─ baseline.py
-│  ├─ experimental_darkir.py
-│  ├─ fusion.py
-│  └─ runtime.py
-├─ tests/
-├─ docs/
-│  ├─ design/
-│  ├─ analysis/
-│  ├─ papers/
-│  └─ superpowers/plans/
-├─ third_party/sam2/
-├─ checkpoints/
-├─ pyproject.toml
-└─ requirements.txt
-```
+## 文件
 
-## 模型
+- `SAM2UNet_darkir_parameternet.py`：融合模块与完整模型。
+- `tests/test_darkir_parameternet_blocks.py`：动态投影、DarkIR 增强与桥接层测试。
+- `tests/test_sam2unet_fusion.py`：五种消融模式、整模输出、路由统计和 checkpoint 测试。
+- `SAM2UNet融合DarkIR与ParameterNet稳健版设计文档.md`：架构与实验设计依据。
 
-- `sam2unet.baseline.BaselineSAM2UNet`：论文版 SAM2-UNet 基线。
-- `sam2unet.ExperimentalDarkIRSAM2UNet`：DBlock_DAT 与 FusedEnhanceBlock 实验版本。
-- `sam2unet.SAM2UNetFusion`：ParameterNet 动态投影与 DarkIR 空间/频域增强融合版本。
+## 环境
 
-## 安装
-
-项目会自动使用 `third_party/sam2/` 中的 Meta SAM2 源码，也支持环境中已安装的 SAM2。
+块级测试只依赖 PyTorch 与 pytest：
 
 ```powershell
-git clone https://github.com/facebookresearch/sam2.git third_party/sam2
 python -m pip install -r requirements.txt
-python -m pip install -e . --no-build-isolation
 python -m pytest -q
 ```
 
-当前项目已在 Windows、Python 3.9、PyTorch 2.1.1、CUDA 11.8 上完成真实 Hiera-L 验证。
+构建真实 Hiera-L 编码器还需要 Meta 官方 SAM2。当前官方 SAM2 要求 Python 3.10+、PyTorch 2.5.1+，Windows 推荐使用 WSL：
 
-## 运行
-
-运行基线与实验模型：
-
-```powershell
-python -m sam2unet.baseline
-python -m sam2unet.experimental_darkir
+```bash
+git clone https://github.com/facebookresearch/sam2.git
+cd sam2
+pip install -e .
 ```
 
-使用融合模型：
+本项目默认使用官方原始 SAM2 Hiera-L 配置 `configs/sam2/sam2_hiera_l.yaml`。使用 SAM2.1 时，应显式传入：
 
 ```python
-from sam2unet import SAM2UNetFusion
+model_cfg="configs/sam2.1/sam2.1_hiera_l.yaml"
+```
+
+## 使用
+
+```python
+from SAM2UNet_darkir_parameternet import SAM2UNetFusion
 
 model = SAM2UNetFusion(
     checkpoint_path="checkpoints/sam2_hiera_large.pt",
     bridge_mode="full",
     num_experts=4,
-    sam_device="cuda",
 )
 out, out1, out2 = model(images)
 ```
 
-`sam_device` 默认为 `"cpu"`，可设为 `"cuda"` 将完整模型构建到 GPU。输入必须是 BCHW 四维张量，且高度和宽度均能被 32 整除；设计目标尺寸为 `352x352`。
-
 支持的 `bridge_mode`：
 
-| 模式 | 投影 | DarkIR 增强 |
-|---|---|---|
-| `rfb` | 原基线 RFB 的兼容实现 | 否 |
-| `static` | 普通 `1x1 Conv` | 否 |
-| `parameternet` | 多专家动态投影 | 否 |
-| `darkir` | 普通 `1x1 Conv` | 是 |
-| `full` | 多专家动态投影 | 是 |
+| 模式             | 投影                  | DarkIR 增强 |
+| ---------------- | --------------------- | ----------- |
+| `rfb`          | 原基线 RFB 的兼容实现 | 否          |
+| `static`       | 普通 `1x1 Conv`     | 否          |
+| `parameternet` | 多专家动态投影        | 否          |
+| `darkir`       | 普通 `1x1 Conv`     | 是          |
+| `full`         | 多专家动态投影        | 是          |
 
 开启路由监控：
 
@@ -82,40 +62,144 @@ model = SAM2UNetFusion(return_router_stats=True)
 (out, out1, out2), router_stats = model(images)
 ```
 
-DarkIR 空间与频域分支可通过 `enable_spatial` 和 `enable_frequency` 独立消融。
+每级路由统计包含样本权重、专家平均使用率和平均路由熵。DarkIR 空间与频域分支可通过 `enable_spatial` 和 `enable_frequency` 独立消融。
 
 ## Checkpoint
 
-官方 Hiera-L 权重位于：
-
-```text
-checkpoints/sam2_hiera_large.pt
-```
-
-融合模型 checkpoint 同时保存配置与权重：
+融合模型 checkpoint 同时保存模型配置与权重：
 
 ```python
 model.save_checkpoint("fusion.pt")
 restored = SAM2UNetFusion.from_checkpoint("fusion.pt")
 ```
 
-从原 SAM2-UNet checkpoint 初始化公共部分：
+从原 SAM2-UNet checkpoint 初始化公共编码器、Adapter、解码器和输出头时使用非严格加载：
 
 ```python
 model.load_baseline_checkpoint("baseline.pt")
 ```
 
-## 文档
+## 训练边界
 
-- 设计文档：`docs/design/`
-- 关系分析：`docs/analysis/`
-- 论文原文：`docs/papers/`
+本地息肉数据已经准备在 Git 忽略的 `data/polyps/prepared/` 目录中，训练与评估入口也已补齐。可信的 mIoU、Dice、MAE、延迟和显存结论仍需完成正式训练后生成。训练时应继续使用设计文档中的分割损失、梯度裁剪与五模式消融顺序，并在同一数据划分和随机种子集合下比较。
 
-当前目录没有任务数据集、数据划分或训练脚本，因此无法生成可信的 mIoU、Dice 和 MAE 结论。
+## Polyp training and evaluation
 
-## 已验证范围
+The project includes a complete manifest-based training and evaluation CLI.
+The default configuration is conservative for the local 4 GB GPU: batch size
+1, automatic mixed precision on CUDA, gradient accumulation, and gradient
+clipping.
 
-- 三种模型均可加载官方 `sam2_hiera_large.pt`。
-- 三种模型均通过 CPU 直接入口、CUDA 前向、CUDA 反向和 CUDA 混合精度前向。
-- `352x352`、batch size 1 的 CUDA 反向峰值保留显存约为 `2.0-2.1 GB`。
-- 测试命令：`python -m pytest -q`。
+根目录的 `main.py` 是推荐的统一运行入口。直接运行时默认执行小规模
+`smoke` 测试，避免误启动正式训练：
+
+```powershell
+python main.py
+```
+
+正式训练完整融合模型：
+
+```powershell
+python main.py --mode train --bridge-mode full --epochs 20
+```
+
+从最近的 checkpoint 继续训练：
+
+```powershell
+python main.py --mode train --bridge-mode full --epochs 20 `
+  --resume runs/polyps/full/latest.pt
+```
+
+评估最佳 checkpoint：
+
+```powershell
+python main.py --mode evaluate --bridge-mode full `
+  --checkpoint runs/polyps/full/best.pt
+```
+
+可使用 `--device cpu|cuda|cuda:N`、`--limit-train` 和 `--limit-test`
+控制运行设备与诊断数据量。查看全部参数：
+
+```powershell
+python main.py --help
+```
+
+Run the complete lightweight workflow smoke test:
+
+```powershell
+python -m sam2unet.experiment smoke --config configs/polyp_train.json
+```
+
+Train one bridge mode:
+
+```powershell
+python -m sam2unet.experiment train `
+  --config configs/polyp_train.json `
+  --bridge-mode static
+```
+
+Resume training:
+
+```powershell
+python -m sam2unet.experiment train `
+  --config configs/polyp_train.json `
+  --bridge-mode static `
+  --resume runs/polyps/static/latest.pt
+```
+
+Evaluate a training checkpoint:
+
+```powershell
+python -m sam2unet.experiment evaluate `
+  --config configs/polyp_train.json `
+  --bridge-mode static `
+  --checkpoint runs/polyps/static/best.pt
+```
+
+Use `--limit-train` and `--limit-test` for short diagnostic runs. Training
+artifacts are written under `runs/polyps/` and include `latest.pt`, `best.pt`,
+`history.json`, and evaluation summaries.
+
+## Polyp dataset preparation
+
+Download and prepare the official PraNet polyp split:
+
+```powershell
+python -m pip install -r requirements.txt
+powershell -ExecutionPolicy Bypass -File scripts/download_polyp_data.ps1
+```
+
+The command keeps only the normalized data required by this project:
+
+```text
+data/polyps/prepared/train                 1450 pairs
+data/polyps/prepared/test/Kvasir            100 pairs
+data/polyps/prepared/test/CVC-ClinicDB        62 pairs
+```
+
+Validate an existing prepared dataset:
+
+```powershell
+$env:PYTHONPATH = "src"
+python -m sam2unet.data validate data/polyps/prepared
+```
+
+The initial experiment settings are recorded in `configs/polyp_train.json`.
+Archive origins and SHA-256 checksums are recorded in
+`configs/polyp_sources.json`.
+
+When the complete Kvasir-SEG and CVC-ClinicDB archives are already available,
+place them beside `PraNet-TrainDataset.zip` under `data/polyps/archives/`:
+
+```text
+data/polyps/archives/PraNet-TrainDataset.zip
+data/polyps/archives/kvasir-seg.zip
+data/polyps/archives/CVC-ClinicDB.zip
+```
+
+Then reproduce the exact PraNet split by using the complete datasets as the
+source of the test complements:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/prepare_local_polyp_data.ps1
+```

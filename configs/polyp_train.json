@@ -1,0 +1,36 @@
+{
+  "task": "binary_segmentation",
+  "data_root": "data/polyps/prepared",
+  "train_manifest": "data/polyps/prepared/manifests/train.csv",
+  "test_sets": {
+    "Kvasir": "data/polyps/prepared/manifests/test-Kvasir.csv",
+    "CVC-ClinicDB": "data/polyps/prepared/manifests/test-CVC-ClinicDB.csv"
+  },
+  "input_size": [352, 352],
+  "epochs": 20,
+  "batch_size": 1,
+  "gradient_accumulation_steps": 12,
+  "num_workers": 0,
+  "optimizer": "AdamW",
+  "learning_rate": 0.001,
+  "weight_decay": 0.01,
+  "max_grad_norm": 1.0,
+  "seed": 42,
+  "checkpoint_path": "checkpoints/sam2_hiera_large.pt",
+  "model_cfg": "configs/sam2/sam2_hiera_l.yaml",
+  "output_root": "runs/polyps",
+  "num_experts": 4,
+  "metrics": ["dice", "iou", "mae"],
+  "bridge_modes": ["rfb", "static", "full"],
+  "expected_counts": {
+    "train": 1450,
+    "test/Kvasir": 100,
+    "test/CVC-ClinicDB": 62
+  },
+  "smoke": {
+    "train_samples": 2,
+    "test_samples": 1,
+    "feature_channels": 8,
+    "attempt_real_forward": true
+  }
+}

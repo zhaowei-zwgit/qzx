@@ -8,3 +8,7 @@ checkpoints/
 *.pth
 third_party/sam2/
 *.egg-info/
+data/
+runs/
+docs/word/demo.docx
+docs/word/paper-output.docx
