@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, Iterable, Mapping, MutableMapping, Sequence
+from typing import Callable, Dict, Iterable, Mapping, MutableMapping, Sequence
 
 import torch
 import torch.nn as nn
@@ -101,7 +101,15 @@ def train_one_epoch(
     accumulation_steps: int = 1,
     max_grad_norm: float | None = 1.0,
     scaler=None,
+    on_batch_callback: Callable[[int, float, float], None] | None = None,
 ) -> float:
+    """训练一个 epoch。
+
+    参数:
+        on_batch_callback: 可选回调，每个 batch 结束后调用。
+            签名: callback(batch_index, loss, learning_rate)
+            用于实时监控（如 TensorBoard、tqdm 进度条）。
+    """
     if accumulation_steps <= 0:
         raise ValueError("accumulation_steps must be positive")
     model.train()
@@ -109,6 +117,7 @@ def train_one_epoch(
     loss_sum = 0.0
     batches = 0
     use_amp = device.type == "cuda"
+    current_lr = optimizer.param_groups[0]["lr"]
     for batch_index, batch in enumerate(loader, start=1):
         images, masks = _unpack_batch(batch, device)
         with torch.autocast(device_type=device.type, enabled=use_amp):
@@ -131,8 +140,13 @@ def train_one_epoch(
             else:
                 optimizer.step()
             optimizer.zero_grad(set_to_none=True)
-        loss_sum += loss.detach().item()
+        batch_loss = loss.detach().item()
+        loss_sum += batch_loss
         batches += 1
+
+        # 每个 batch 结束后调用回调（传入当前 loss 和学习率）
+        if on_batch_callback is not None:
+            on_batch_callback(batch_index, batch_loss, current_lr)
 
     if not batches:
         raise ValueError("training loader is empty")

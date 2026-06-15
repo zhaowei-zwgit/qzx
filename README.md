@@ -1,24 +1,113 @@
-# SAM2-UNet DarkIR + ParameterNet 稳健融合版
+# SAM2-UNet Fusion
 
-本目录在保留 `SAM2UNet.py` 与 `SAM2UNet_dblock_dat_fused_rfbhou.py` 不变的前提下，新增了 `SAM2UNet_darkir_parameternet.py`。新模型将 ParameterNet 风格的多专家动态 `1x1` 投影与 DarkIR 启发的空间/频域特征增强放入统一 `FeatureBridge`，并保留 SAM2-UNet 的三级 U-Net 解码器与三个分割输出。
+基于 SAM2 视觉编码器与 U-Net 解码器的多任务分割框架，通过可切换的特征桥接模块（FeatureBridge）融合 DarkIR 空间/频域增强与 ParameterNet 多专家动态投影。
 
-## 文件
+支持多个分割基准数据集，通过配置文件切换任务。
 
-- `SAM2UNet_darkir_parameternet.py`：融合模块与完整模型。
-- `tests/test_darkir_parameternet_blocks.py`：动态投影、DarkIR 增强与桥接层测试。
-- `tests/test_sam2unet_fusion.py`：五种消融模式、整模输出、路由统计和 checkpoint 测试。
-- `SAM2UNet融合DarkIR与ParameterNet稳健版设计文档.md`：架构与实验设计依据。
+## 架构概览
 
-## 环境
-
-块级测试只依赖 PyTorch 与 pytest：
-
-```powershell
-python -m pip install -r requirements.txt
-python -m pytest -q
+```
+输入图像
+    │
+    ▼
+┌─────────────────────┐
+│  SAM2 Hiera-Large   │  冻结编码器 + Adapter 微调
+│  (4 级特征输出)      │
+└───┬───┬───┬───┬─────┘
+    │   │   │   │
+    ▼   ▼   ▼   ▼      ← FeatureBridge（5 种消融模式可选）
+┌─────────────────────┐
+│  U-Net 解码器        │  三级深度监督输出
+│  (3 级分割输出)      │
+└───┬───┬───┬──────────┘
+    │   │   │
+    ▼   ▼   ▼
+  P1   P2  P3
 ```
 
-构建真实 Hiera-L 编码器还需要 Meta 官方 SAM2。当前官方 SAM2 要求 Python 3.10+、PyTorch 2.5.1+，Windows 推荐使用 WSL：
+**五种特征桥接模式**：
+
+| 模式           | 投影方式               | DarkIR 增强 | 说明                   |
+| -------------- | ---------------------- | ----------- | ---------------------- |
+| `rfb`          | 基线 RFB               | 否          | 原 SAM2-UNet 基线实现  |
+| `static`       | 普通 1×1 Conv          | 否          | 最简投影基线           |
+| `parameternet` | 多专家动态投影         | 否          | ParameterNet 路由机制  |
+| `darkir`       | 普通 1×1 Conv          | 是          | DarkIR 空间+频域增强   |
+| `full`         | 多专家动态投影         | 是          | 完整融合方案           |
+
+## 支持的数据集
+
+### 息肉分割（Polyp Segmentation）
+
+| 数据集         | 角色     | 规模            | 配置键         | 状态     |
+| -------------- | -------- | --------------- | -------------- | -------- |
+| Kvasir-SEG     | 训练+测试 | 1000 / 100     | `Kvasir`       | ✅ 已实现 |
+| CVC-ClinicDB   | 训练+测试 | 612 / 62       | `CVC-ClinicDB` | ✅ 已实现 |
+| CVC-300        | 仅测试   | 60              | `CVC-300`      | 🔜 规划中 |
+| CVC-ColonDB    | 仅测试   | 380             | `CVC-ColonDB`  | 🔜 规划中 |
+| ETIS-Larib     | 仅测试   | 196             | `ETIS`         | 🔜 规划中 |
+| CHAMELEON      | 仅测试   | 76              | `CHAMELEON`    | 🔜 规划中 |
+
+### 伪装目标检测（Camouflaged Object Detection）
+
+| 数据集         | 角色     | 规模            | 配置键         | 状态     |
+| -------------- | -------- | --------------- | -------------- | -------- |
+| CAMO           | 训练+测试 | 1250 / 250     | `CAMO`         | 🔜 规划中 |
+| COD10K         | 训练+测试 | 3040 / 2026    | `COD10K`       | 🔜 规划中 |
+| NC4K           | 仅测试   | 4121            | `NC4K`         | 🔜 规划中 |
+
+通过 `--config` 参数切换不同任务的数据集和训练配置。每个配置文件独立定义数据路径、输入尺寸、训练超参和评估指标。跨数据集测试（在未见过的数据集上评估）用于衡量模型的泛化能力。
+
+## 项目结构
+
+```
+qzx/
+├── main.py                          # 统一 CLI 入口
+├── configs/
+│   ├── polyp_train.json             # 息肉分割训练配置
+│   ├── polyp_sources.json           # 息肉数据集来源与校验
+│   ├── cod_train.json               # 伪装目标检测训练配置（规划中）
+│   ├── cod_sources.json             # COD 数据集来源与校验（规划中）
+│   └── sam2/                        # SAM2 模型配置
+├── src/sam2unet/
+│   ├── __init__.py                  # 懒加载导出模型类
+│   ├── runtime.py                   # SAM2 构建与输入校验
+│   ├── baseline.py                  # 原 SAM2-UNet（RFB 桥接）
+│   ├── experimental_darkir.py       # 实验变体（DBlock_DAT + FusedEnhanceBlock）
+│   ├── fusion.py                    # 核心融合模型（5 种消融模式）
+│   ├── training.py                  # 损失函数、指标、训练/评估循环、checkpoint I/O
+│   ├── polyp_dataset.py             # 息肉数据集（CSV manifest）
+│   ├── cod_dataset.py               # 伪装目标数据集（规划中）
+│   ├── data.py                      # 数据准备 CLI
+│   ├── experiment.py                # 实验 CLI（smoke / train / evaluate）
+│   └── monitor.py                   # 实时训练监控（TensorBoard + tqdm）
+├── tests/                           # 测试套件
+├── scripts/
+│   ├── download_polyp_data.ps1      # 下载息肉数据集
+│   └── prepare_local_polyp_data.ps1 # 从完整归档准备息肉数据
+├── checkpoints/
+│   └── sam2_hiera_large.pt          # 预训练 SAM2 权重（~898 MB）
+├── runs/                            # 训练输出（按任务/模式组织）
+└── docs/                            # 论文草稿与设计文档
+```
+
+## 环境配置
+
+Python ≥ 3.10，PyTorch ≥ 2.1，推荐使用 conda 管理环境：
+
+```powershell
+# 创建并激活环境
+conda create -n sam2 python=3.10 -y
+conda activate sam2
+
+# 安装 PyTorch（根据 CUDA 版本选择）
+pip install torch torchvision
+
+# 安装项目依赖
+pip install -r requirements.txt
+```
+
+构建真实 Hiera-L 编码器需要 Meta 官方 SAM2（Windows 推荐 WSL）：
 
 ```bash
 git clone https://github.com/facebookresearch/sam2.git
@@ -26,170 +115,44 @@ cd sam2
 pip install -e .
 ```
 
-本项目默认使用官方原始 SAM2 Hiera-L 配置 `configs/sam2/sam2_hiera_l.yaml`。使用 SAM2.1 时，应显式传入：
+## 数据准备
 
-```python
-model_cfg="configs/sam2.1/sam2.1_hiera_l.yaml"
+数据统一放在 `data/` 下，按任务组织：
+
+```text
+data/
+├── polyps/                          # 息肉分割
+│   ├── archives/                    # 原始压缩包
+│   └── prepared/                    # 标准化后的数据
+│       ├── train/                   # 训练集
+│       └── test/                    # 各测试集
+│           ├── Kvasir/
+│           ├── CVC-ClinicDB/
+│           ├── CVC-300/
+│           ├── CVC-ColonDB/
+│           ├── ETIS/
+│           └── CHAMELEON/
+└── cod/                             # 伪装目标检测
+    ├── archives/
+    └── prepared/
+        ├── train/
+        └── test/
+            ├── CAMO/
+            ├── COD10K/
+            └── NC4K/
 ```
 
-## 使用
+### 息肉分割
 
-```python
-from SAM2UNet_darkir_parameternet import SAM2UNetFusion
-
-model = SAM2UNetFusion(
-    checkpoint_path="checkpoints/sam2_hiera_large.pt",
-    bridge_mode="full",
-    num_experts=4,
-)
-out, out1, out2 = model(images)
-```
-
-支持的 `bridge_mode`：
-
-| 模式             | 投影                  | DarkIR 增强 |
-| ---------------- | --------------------- | ----------- |
-| `rfb`          | 原基线 RFB 的兼容实现 | 否          |
-| `static`       | 普通 `1x1 Conv`     | 否          |
-| `parameternet` | 多专家动态投影        | 否          |
-| `darkir`       | 普通 `1x1 Conv`     | 是          |
-| `full`         | 多专家动态投影        | 是          |
-
-开启路由监控：
-
-```python
-model = SAM2UNetFusion(return_router_stats=True)
-(out, out1, out2), router_stats = model(images)
-```
-
-每级路由统计包含样本权重、专家平均使用率和平均路由熵。DarkIR 空间与频域分支可通过 `enable_spatial` 和 `enable_frequency` 独立消融。
-
-## Checkpoint
-
-融合模型 checkpoint 同时保存模型配置与权重：
-
-```python
-model.save_checkpoint("fusion.pt")
-restored = SAM2UNetFusion.from_checkpoint("fusion.pt")
-```
-
-从原 SAM2-UNet checkpoint 初始化公共编码器、Adapter、解码器和输出头时使用非严格加载：
-
-```python
-model.load_baseline_checkpoint("baseline.pt")
-```
-
-## 训练边界
-
-本地息肉数据已经准备在 Git 忽略的 `data/polyps/prepared/` 目录中，训练与评估入口也已补齐。可信的 mIoU、Dice、MAE、延迟和显存结论仍需完成正式训练后生成。训练时应继续使用设计文档中的分割损失、梯度裁剪与五模式消融顺序，并在同一数据划分和随机种子集合下比较。
-
-## Polyp training and evaluation
-
-The project includes a complete manifest-based training and evaluation CLI.
-The default configuration is conservative for the local 4 GB GPU: batch size
-1, automatic mixed precision on CUDA, gradient accumulation, and gradient
-clipping.
-
-根目录的 `main.py` 是推荐的统一运行入口。直接运行时默认执行小规模
-`smoke` 测试，避免误启动正式训练：
+**方式一：下载 PraNet 标准划分**
 
 ```powershell
-python main.py
-```
-
-正式训练完整融合模型：
-
-```powershell
-python main.py --mode train --bridge-mode full --epochs 20
-```
-
-从最近的 checkpoint 继续训练：
-
-```powershell
-python main.py --mode train --bridge-mode full --epochs 20 `
-  --resume runs/polyps/full/latest.pt
-```
-
-评估最佳 checkpoint：
-
-```powershell
-python main.py --mode evaluate --bridge-mode full `
-  --checkpoint runs/polyps/full/best.pt
-```
-
-可使用 `--device cpu|cuda|cuda:N`、`--limit-train` 和 `--limit-test`
-控制运行设备与诊断数据量。查看全部参数：
-
-```powershell
-python main.py --help
-```
-
-Run the complete lightweight workflow smoke test:
-
-```powershell
-python -m sam2unet.experiment smoke --config configs/polyp_train.json
-```
-
-Train one bridge mode:
-
-```powershell
-python -m sam2unet.experiment train `
-  --config configs/polyp_train.json `
-  --bridge-mode static
-```
-
-Resume training:
-
-```powershell
-python -m sam2unet.experiment train `
-  --config configs/polyp_train.json `
-  --bridge-mode static `
-  --resume runs/polyps/static/latest.pt
-```
-
-Evaluate a training checkpoint:
-
-```powershell
-python -m sam2unet.experiment evaluate `
-  --config configs/polyp_train.json `
-  --bridge-mode static `
-  --checkpoint runs/polyps/static/best.pt
-```
-
-Use `--limit-train` and `--limit-test` for short diagnostic runs. Training
-artifacts are written under `runs/polyps/` and include `latest.pt`, `best.pt`,
-`history.json`, and evaluation summaries.
-
-## Polyp dataset preparation
-
-Download and prepare the official PraNet polyp split:
-
-```powershell
-python -m pip install -r requirements.txt
 powershell -ExecutionPolicy Bypass -File scripts/download_polyp_data.ps1
 ```
 
-The command keeps only the normalized data required by this project:
+**方式二：从完整归档准备**
 
-```text
-data/polyps/prepared/train                 1450 pairs
-data/polyps/prepared/test/Kvasir            100 pairs
-data/polyps/prepared/test/CVC-ClinicDB        62 pairs
-```
-
-Validate an existing prepared dataset:
-
-```powershell
-$env:PYTHONPATH = "src"
-python -m sam2unet.data validate data/polyps/prepared
-```
-
-The initial experiment settings are recorded in `configs/polyp_train.json`.
-Archive origins and SHA-256 checksums are recorded in
-`configs/polyp_sources.json`.
-
-When the complete Kvasir-SEG and CVC-ClinicDB archives are already available,
-place them beside `PraNet-TrainDataset.zip` under `data/polyps/archives/`:
+将完整数据集放在 `data/polyps/archives/` 下：
 
 ```text
 data/polyps/archives/PraNet-TrainDataset.zip
@@ -197,9 +160,244 @@ data/polyps/archives/kvasir-seg.zip
 data/polyps/archives/CVC-ClinicDB.zip
 ```
 
-Then reproduce the exact PraNet split by using the complete datasets as the
-source of the test complements:
-
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/prepare_local_polyp_data.ps1
 ```
+
+准备完成后数据位于 `data/polyps/prepared/`：
+
+```text
+train/                 1450 对（图像 + 掩码）
+test/Kvasir            100 对
+test/CVC-ClinicDB       62 对
+```
+
+校验数据完整性：
+
+```powershell
+python -m sam2unet.data validate data/polyps/prepared
+```
+
+**扩展测试集**（规划中）：
+
+准备额外的息肉测试集用于跨数据集泛化评估：
+
+| 数据集      | 规模 | 说明                              |
+| ----------- | ---- | --------------------------------- |
+| CVC-300     | 60   | 结肠镜图像，息肉边界清晰          |
+| CVC-ColonDB | 380  | 结肠镜数据库，包含小息肉          |
+| ETIS-Larib  | 196  | 高分辨率内窥镜图像                |
+| CHAMELEON   | 76   | 挑战性样本，息肉与背景对比度低    |
+
+### 伪装目标检测（规划中）
+
+训练集：CAMO + COD10K，测试集：NC4K。
+
+数据将准备在 `data/cod/prepared/` 下，配置文件为 `configs/cod_train.json`。
+
+| 数据集  | 规模   | 说明                                |
+| ------- | ------ | ----------------------------------- |
+| CAMO    | 1500   | 1250 训练 + 250 测试，伪装物体分割  |
+| COD10K  | 5066   | 3040 训练 + 2026 测试，大规模 COD   |
+| NC4K    | 4121   | 纯测试集，自然场景伪装目标          |
+
+## 使用方法
+
+`main.py` 是统一运行入口，默认执行 smoke 小规模测试：
+
+```powershell
+python main.py --help
+```
+
+### Smoke 测试
+
+快速验证环境和模型前向传播：
+
+```powershell
+python main.py
+# 或显式指定
+python main.py --mode smoke
+```
+
+### 正式训练
+
+通过 `--config` 选择任务，`--bridge-mode` 选择消融模式：
+
+```powershell
+# 息肉分割 — 完整融合模型（训练+跨数据集测试）
+python main.py --mode train --config configs/polyp_train.json --bridge-mode full --epochs 20
+
+# 伪装目标检测（数据就绪后）
+python main.py --mode train --config configs/cod_train.json --bridge-mode full --epochs 30
+
+# 消融实验：逐个训练各桥接模式
+python main.py --mode train --config configs/polyp_train.json --bridge-mode rfb --epochs 20
+python main.py --mode train --config configs/polyp_train.json --bridge-mode static --epochs 20
+python main.py --mode train --config configs/polyp_train.json --bridge-mode parameternet --epochs 20
+python main.py --mode train --config configs/polyp_train.json --bridge-mode darkir --epochs 20
+```
+
+训练过程中模型会在配置文件中定义的所有测试集上自动评估，`history.json` 记录每个测试集的 Dice、IoU、MAE 指标，便于分析跨数据集泛化能力。
+
+从 checkpoint 恢复训练：
+
+```powershell
+python main.py --mode train --config configs/polyp_train.json --bridge-mode full --epochs 20 --resume runs/polyps/full/latest.pt
+```
+
+### 评估
+
+```powershell
+python main.py --mode evaluate --config configs/polyp_train.json --bridge-mode full --checkpoint runs/polyps/full/best.pt
+```
+
+### 常用参数
+
+| 参数              | 说明                                      | 默认值          |
+| ----------------- | ----------------------------------------- | --------------- |
+| `--mode`          | 运行模式：`smoke` / `train` / `evaluate` | `smoke`         |
+| `--config`        | 任务配置文件                              | `configs/polyp_train.json` |
+| `--bridge-mode`   | 特征桥接消融模式                          | 配置文件最后一项 |
+| `--device`        | 运行设备：`auto` / `cpu` / `cuda` / `cuda:N` | `auto`      |
+| `--epochs`        | 训练轮数（仅 train 模式）                 | 配置文件值      |
+| `--resume`        | 恢复训练的 checkpoint 路径（仅 train）    | 无              |
+| `--checkpoint`    | 评估用 checkpoint 路径（仅 evaluate）     | 必填            |
+| `--limit-train`   | 限制训练样本数（诊断用）                  | 无              |
+| `--limit-test`    | 限制测试样本数（诊断用）                  | 无              |
+| `--no-monitor`    | 禁用实时监控（仅 train 模式）             | 启用            |
+
+## 实时训练监控
+
+训练时自动启用 TensorBoard 实时监控和 tqdm 终端进度条。
+
+### 终端进度条
+
+```
+Epoch 1:  45%|████▌      | 540/1200 [02:15<02:46, loss=0.3421, lr=9.87e-04]
+Epoch 1 summary — loss=0.3652 | Kvasir: Dice=0.8234 IoU=0.7102 | CVC-ClinicDB: Dice=0.7891 IoU=0.6654
+```
+
+### TensorBoard
+
+```powershell
+# 查看所有任务的训练曲线
+tensorboard --logdir=runs/
+
+# 仅查看特定任务
+tensorboard --logdir=runs/polyps/
+```
+
+浏览器访问 `http://localhost:6006` 查看：
+
+- `train/batch_loss` — 每个 batch 的 loss 曲线
+- `train/epoch_loss` — 每个 epoch 的平均 loss
+- `val/{测试集}/dice` — 各测试集 Dice / IoU / MAE
+- `val/average_dice` — 综合 Dice 对比
+- `train/learning_rate` — 学习率调度曲线
+
+TensorBoard 日志保存在 `runs/<任务>/<bridge_mode>/tb_logs/`。
+
+禁用监控：
+
+```powershell
+python main.py --mode train --config configs/polyp_train.json --bridge-mode full --no-monitor
+```
+
+## 训练配置
+
+每个任务的配置文件独立管理。以息肉分割为例（`configs/polyp_train.json`）：
+
+```json
+{
+  "task": "binary_segmentation",
+  "input_size": [352, 352],
+  "batch_size": 1,
+  "gradient_accumulation_steps": 12,
+  "optimizer": "AdamW",
+  "learning_rate": 0.001,
+  "weight_decay": 0.01,
+  "max_grad_norm": 1.0,
+  "epochs": 20,
+  "num_experts": 4,
+  "bridge_modes": ["rfb", "static", "full"]
+}
+```
+
+关键设计：
+- **Batch size 1 + 梯度累积 12 步** = 有效 batch size 12，适配小显存
+- **自动混合精度（AMP）**：CUDA 上自动启用，节省显存
+- **梯度裁剪**：最大梯度范数 1.0，稳定训练
+- **Cosine Annealing**：学习率调度
+
+添加新任务时，复制现有配置文件并修改数据路径、输入尺寸和评估指标即可。
+
+## Checkpoint 管理
+
+训练产物按 `runs/<任务>/<bridge_mode>/` 组织：
+
+```text
+runs/
+├── polyps/
+│   ├── full/
+│   │   ├── latest.pt              # 最新 checkpoint
+│   │   ├── best.pt                # 最佳 Dice checkpoint
+│   │   ├── history.json           # 训练指标记录（含所有测试集）
+│   │   ├── training_summary.json  # 训练总结
+│   │   └── tb_logs/               # TensorBoard 日志
+│   ├── rfb/
+│   ├── static/
+│   ├── parameternet/
+│   └── darkir/
+└── cod/
+    ├── full/
+    ├── rfb/
+    └── ...
+```
+
+每个 checkpoint 的 `history.json` 记录所有测试集的指标，便于分析跨数据集泛化性能。
+
+编程方式加载 checkpoint：
+
+```python
+from sam2unet import SAM2UNetFusion
+
+# 从 checkpoint 恢复完整训练状态
+model = SAM2UNetFusion.from_checkpoint("runs/polyps/full/best.pt")
+
+# 从原 SAM2-UNet checkpoint 初始化公共层
+model.load_baseline_checkpoint("baseline.pt")
+```
+
+## 路由监控
+
+开启路由统计可观察 ParameterNet 多专家路由的权重分布：
+
+```python
+model = SAM2UNetFusion(return_router_stats=True)
+outputs, router_stats = model(images)
+
+# router_stats 包含每级桥接的：
+# - expert_weights: 各专家权重
+# - mean_usage: 专家平均使用率
+# - routing_entropy: 平均路由熵
+```
+
+DarkIR 空间与频域分支可通过 `enable_spatial` 和 `enable_frequency` 独立消融。
+
+## 测试
+
+```powershell
+python -m pytest tests/ -q
+```
+
+测试覆盖：
+- 模型架构：5 种桥接模式、前向传播、checkpoint 往返
+- 训练组件：损失函数、指标计算、训练循环、checkpoint I/O
+- 数据管线：数据集加载、manifest 校验、数据准备 CLI
+- 运行时：SAM2 构建、输入校验、设备放置
+- 实验 CLI：smoke 测试、参数解析、产物生成
+- 监控模块：TensorBoard 集成、tqdm 进度条
+
+## 许可
+
+本项目为学术研究用途。SAM2 编码器来自 [Meta SAM2](https://github.com/facebookresearch/sam2)，遵循其原始许可。

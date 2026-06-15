@@ -15,6 +15,7 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader, Subset
 
 from .fusion import SAM2UNetFusion
+from .monitor import TrainingMonitor
 from .polyp_dataset import PolypManifestDataset
 from .runtime import DEFAULT_MODEL_CONFIG
 from .training import (
@@ -183,6 +184,7 @@ def run_training(
     output_dir: Path,
     epochs: int,
     resume: Path | None = None,
+    monitor_enabled: bool = True,
 ) -> Dict[str, object]:
     optimizer, scheduler = _optimizer_and_scheduler(model, config, epochs)
     scaler = torch.cuda.amp.GradScaler(enabled=device.type == "cuda")
@@ -198,7 +200,19 @@ def run_training(
         history = list(state.get("history", []))
 
     output_dir.mkdir(parents=True, exist_ok=True)
+    monitor = TrainingMonitor(output_dir, enabled=monitor_enabled)
+
+    # 训练集总 batch 数，用于进度条
+    total_batches = len(train_loader)
+
     for epoch in range(start_epoch + 1, epochs + 1):
+        monitor.on_epoch_start(epoch, total_batches)
+
+        current_lr = optimizer.param_groups[0]["lr"]
+
+        def _batch_callback(batch_idx: int, loss: float, lr: float) -> None:
+            monitor.on_batch_end(epoch, batch_idx, loss, lr)
+
         train_loss = train_one_epoch(
             model,
             train_loader,
@@ -207,12 +221,16 @@ def run_training(
             accumulation_steps=int(config.get("gradient_accumulation_steps", 1)),
             max_grad_norm=float(config.get("max_grad_norm", 1.0)),
             scaler=scaler,
+            on_batch_callback=_batch_callback,
         )
         evaluations = _evaluate_sets(model, test_loaders, device)
         average_dice = sum(item["dice"] for item in evaluations.values()) / len(
             evaluations
         )
         scheduler.step()
+
+        monitor.on_epoch_end(epoch, train_loss, evaluations, average_dice)
+
         record = {
             "epoch": epoch,
             "train_loss": train_loss,
@@ -249,6 +267,8 @@ def run_training(
                 scaler,
             )
         _write_json(output_dir / "history.json", history)
+
+    monitor.on_train_end()
     return {"best_score": best_score, "history": history}
 
 
@@ -268,6 +288,11 @@ def _parser() -> argparse.ArgumentParser:
     _common_args(train)
     train.add_argument("--epochs", type=int, default=None)
     train.add_argument("--resume", type=Path, default=None)
+    train.add_argument(
+        "--no-monitor",
+        action="store_true",
+        help="禁用 TensorBoard 实时监控和 tqdm 进度条",
+    )
     evaluate = subparsers.add_parser("evaluate")
     _common_args(evaluate)
     evaluate.add_argument("--checkpoint", type=Path, required=True)
@@ -290,8 +315,10 @@ def _train_command(args, config, device, config_path) -> int:
     )
     model = build_model(config, device, bridge_mode)
     output_dir = _output_root(args, config, bridge_mode)
+    monitor_enabled = not getattr(args, "no_monitor", False)
     summary = run_training(
-        config, model, train_loader, test_loaders, device, output_dir, epochs, args.resume
+        config, model, train_loader, test_loaders, device, output_dir, epochs, args.resume,
+        monitor_enabled=monitor_enabled,
     )
     _write_json(output_dir / "training_summary.json", summary)
     return 0
@@ -336,7 +363,10 @@ def _smoke_command(args, config, device, config_path) -> int:
     )
     output_dir = _output_root(args, config, "smoke")
     model = build_model(config, device, "static", smoke=True)
-    run_training(config, model, train_loader, test_loaders, device, output_dir, epochs=1)
+    run_training(
+        config, model, train_loader, test_loaders, device, output_dir, epochs=1,
+        monitor_enabled=False,
+    )
 
     restored = build_model(config, device, "static", smoke=True)
     load_training_checkpoint(output_dir / "latest.pt", restored, map_location=device)

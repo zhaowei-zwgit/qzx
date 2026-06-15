@@ -43,6 +43,11 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--checkpoint", type=Path, default=None, help="evaluate 模式必须提供"
     )
+    parser.add_argument(
+        "--no-monitor",
+        action="store_true",
+        help="禁用 TensorBoard 实时监控和 tqdm 进度条",
+    )
     return parser
 
 
@@ -85,6 +90,8 @@ def build_experiment_argv(args: argparse.Namespace) -> list[str]:
     if args.mode == "train":
         _append_option(arguments, "--epochs", args.epochs)
         _append_option(arguments, "--resume", args.resume)
+        if getattr(args, "no_monitor", False):
+            arguments.append("--no-monitor")
     elif args.mode == "evaluate":
         _append_option(arguments, "--checkpoint", args.checkpoint)
     return arguments
