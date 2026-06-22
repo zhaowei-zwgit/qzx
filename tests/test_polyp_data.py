@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
+from sam2unet import data as polyp_data
 from sam2unet.data import (
     main,
     prepare_polyp_data_from_full_sources,
@@ -29,11 +30,13 @@ def _build_pranet_source(root: Path) -> tuple[Path, Path]:
     test = root / "TestDataset"
     _write_pair(test, "Kvasir", "kvasir-test")
     _write_pair(test, "CVC-ClinicDB", "clinic-test")
-    _write_pair(test, "CVC-ColonDB", "ignored-test")
+    _write_pair(test, "CVC-300", "cvc-300-test")
+    _write_pair(test, "CVC-ColonDB", "colon-test")
+    _write_pair(test, "ETIS-LaribPolypDB", "etis-test")
     return train, test
 
 
-def test_prepare_pranet_polyp_data_keeps_only_requested_test_sets(tmp_path: Path):
+def test_prepare_pranet_polyp_data_keeps_all_supported_test_sets(tmp_path: Path):
     train_source, test_source = _build_pranet_source(tmp_path / "source")
     output = tmp_path / "prepared"
 
@@ -43,10 +46,15 @@ def test_prepare_pranet_polyp_data_keeps_only_requested_test_sets(tmp_path: Path
         "train": 3,
         "test/Kvasir": 1,
         "test/CVC-ClinicDB": 1,
+        "test/CVC-300": 1,
+        "test/CVC-ColonDB": 1,
+        "test/ETIS": 1,
     }
     assert len(list((output / "train" / "images").glob("*.png"))) == 3
     assert len(list((output / "test" / "Kvasir" / "images").glob("*.png"))) == 1
-    assert not (output / "test" / "CVC-ColonDB").exists()
+    assert len(list((output / "test" / "CVC-300" / "images").glob("*.png"))) == 1
+    assert len(list((output / "test" / "CVC-ColonDB" / "images").glob("*.png"))) == 1
+    assert len(list((output / "test" / "ETIS" / "images").glob("*.png"))) == 1
 
 
 def test_prepare_pranet_polyp_data_writes_manifest_and_validates(tmp_path: Path):
@@ -68,6 +76,36 @@ def test_prepare_pranet_polyp_data_writes_manifest_and_validates(tmp_path: Path)
     assert len(rows) == 3
 
 
+def test_validate_prepared_polyp_data_includes_extended_test_sets(tmp_path: Path):
+    train_source, test_source = _build_pranet_source(tmp_path / "source")
+    output = tmp_path / "prepared"
+    prepare_pranet_polyp_data(train_source, test_source, output)
+
+    summary = validate_prepared_polyp_data(output)
+
+    assert summary["test/CVC-300"] == 1
+    assert summary["test/CVC-ColonDB"] == 1
+    assert summary["test/ETIS"] == 1
+
+
+def test_prepare_pranet_polyp_tests_adds_only_selected_datasets(tmp_path: Path):
+    _, test_source = _build_pranet_source(tmp_path / "source")
+    output = tmp_path / "prepared"
+    marker = output / "train" / "keep.txt"
+    marker.parent.mkdir(parents=True)
+    marker.write_text("keep", encoding="utf-8")
+
+    summary = polyp_data.prepare_pranet_polyp_tests(
+        test_source,
+        output,
+        datasets=("CVC-300", "CVC-ColonDB"),
+    )
+
+    assert summary == {"test/CVC-300": 1, "test/CVC-ColonDB": 1}
+    assert marker.read_text(encoding="utf-8") == "keep"
+    assert not (output / "test" / "Kvasir").exists()
+
+
 def test_prepare_pranet_polyp_data_rejects_missing_mask(tmp_path: Path):
     train_source, test_source = _build_pranet_source(tmp_path / "source")
     (train_source / "masks" / "train-a.png").unlink()
@@ -81,8 +119,24 @@ def test_polyp_data_cli_prepares_and_validates(tmp_path: Path, capsys):
     output = tmp_path / "prepared"
 
     assert main(["prepare", str(train_source), str(test_source), str(output)]) == 0
-    assert main(["validate", str(output), "--train-count", "3", "--kvasir-count", "1",
-                 "--clinic-count", "1"]) == 0
+    assert main(
+        [
+            "validate",
+            str(output),
+            "--train-count",
+            "3",
+            "--kvasir-count",
+            "1",
+            "--clinic-count",
+            "1",
+            "--cvc-300-count",
+            "1",
+            "--colon-count",
+            "1",
+            "--etis-count",
+            "1",
+        ]
+    ) == 0
     assert '"train": 3' in capsys.readouterr().out
 
 
@@ -117,3 +171,20 @@ def test_prepare_from_full_sources_uses_official_train_and_exact_complements(
     with (output / "manifests" / "train.csv").open(newline="", encoding="utf-8") as file:
         rows = list(csv.DictReader(file))
     assert {row["dataset"] for row in rows} == {"Kvasir", "CVC-ClinicDB"}
+
+    assert (
+        main(
+            [
+                "validate",
+                str(output),
+                "--basic-only",
+                "--train-count",
+                "2",
+                "--kvasir-count",
+                "1",
+                "--clinic-count",
+                "1",
+            ]
+        )
+        == 0
+    )

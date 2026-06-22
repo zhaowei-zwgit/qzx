@@ -60,7 +60,7 @@ if ($LASTEXITCODE -ne 0) {
     throw "Dataset preparation failed"
 }
 
-python -m sam2unet.data validate $PreparedRoot
+python -m sam2unet.data validate $PreparedRoot --basic-only
 if ($LASTEXITCODE -ne 0) {
     throw "Dataset validation failed"
 }

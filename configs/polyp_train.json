@@ -4,7 +4,10 @@
   "train_manifest": "data/polyps/prepared/manifests/train.csv",
   "test_sets": {
     "Kvasir": "data/polyps/prepared/manifests/test-Kvasir.csv",
-    "CVC-ClinicDB": "data/polyps/prepared/manifests/test-CVC-ClinicDB.csv"
+    "CVC-ClinicDB": "data/polyps/prepared/manifests/test-CVC-ClinicDB.csv",
+    "CVC-300": "data/polyps/prepared/manifests/test-CVC-300.csv",
+    "CVC-ColonDB": "data/polyps/prepared/manifests/test-CVC-ColonDB.csv",
+    "ETIS": "data/polyps/prepared/manifests/test-ETIS.csv"
   },
   "input_size": [352, 352],
   "epochs": 20,
@@ -25,7 +28,10 @@
   "expected_counts": {
     "train": 1450,
     "test/Kvasir": 100,
-    "test/CVC-ClinicDB": 62
+    "test/CVC-ClinicDB": 62,
+    "test/CVC-300": 60,
+    "test/CVC-ColonDB": 380,
+    "test/ETIS": 196
   },
   "smoke": {
     "train_samples": 2,

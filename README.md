@@ -43,18 +43,20 @@
 | -------------- | -------- | --------------- | -------------- | -------- |
 | Kvasir-SEG     | 训练+测试 | 1000 / 100     | `Kvasir`       | ✅ 已实现 |
 | CVC-ClinicDB   | 训练+测试 | 612 / 62       | `CVC-ClinicDB` | ✅ 已实现 |
-| CVC-300        | 仅测试   | 60              | `CVC-300`      | 🔜 规划中 |
-| CVC-ColonDB    | 仅测试   | 380             | `CVC-ColonDB`  | 🔜 规划中 |
-| ETIS-Larib     | 仅测试   | 196             | `ETIS`         | 🔜 规划中 |
-| CHAMELEON      | 仅测试   | 76              | `CHAMELEON`    | 🔜 规划中 |
+| CVC-300        | 仅测试   | 60              | `CVC-300`      | ✅ 已实现 |
+| CVC-ColonDB    | 仅测试   | 380             | `CVC-ColonDB`  | ✅ 已实现 |
+| ETIS-Larib     | 仅测试   | 196             | `ETIS`         | ✅ 已实现 |
 
 ### 伪装目标检测（Camouflaged Object Detection）
 
 | 数据集         | 角色     | 规模            | 配置键         | 状态     |
 | -------------- | -------- | --------------- | -------------- | -------- |
-| CAMO           | 训练+测试 | 1250 / 250     | `CAMO`         | 🔜 规划中 |
-| COD10K         | 训练+测试 | 3040 / 2026    | `COD10K`       | 🔜 规划中 |
-| NC4K           | 仅测试   | 4121            | `NC4K`         | 🔜 规划中 |
+| CAMO           | 训练+测试 | 1000 / 250     | `CAMO`         | ✅ 数据就绪 |
+| COD10K         | 训练+测试 | 3040 / 2026    | `COD10K`       | ✅ 数据就绪 |
+| NC4K           | 仅测试   | 4121            | `NC4K`         | ✅ 数据就绪 |
+| CHAMELEON      | 仅测试   | 76              | `CHAMELEON`    | ✅ 数据就绪 |
+
+COD 数据已准备并校验；对应的数据加载器和训练配置仍在规划中。
 
 通过 `--config` 参数切换不同任务的数据集和训练配置。每个配置文件独立定义数据路径、输入尺寸、训练超参和评估指标。跨数据集测试（在未见过的数据集上评估）用于衡量模型的泛化能力。
 
@@ -67,7 +69,7 @@ qzx/
 │   ├── polyp_train.json             # 息肉分割训练配置
 │   ├── polyp_sources.json           # 息肉数据集来源与校验
 │   ├── cod_train.json               # 伪装目标检测训练配置（规划中）
-│   ├── cod_sources.json             # COD 数据集来源与校验（规划中）
+│   ├── cod_sources.json             # COD 数据集来源与校验
 │   └── sam2/                        # SAM2 模型配置
 ├── src/sam2unet/
 │   ├── __init__.py                  # 懒加载导出模型类
@@ -130,16 +132,18 @@ data/
 │           ├── CVC-ClinicDB/
 │           ├── CVC-300/
 │           ├── CVC-ColonDB/
-│           ├── ETIS/
-│           └── CHAMELEON/
+│           └── ETIS/
 └── cod/                             # 伪装目标检测
     ├── archives/
     └── prepared/
         ├── train/
+        │   ├── CAMO/
+        │   └── COD10K/
         └── test/
             ├── CAMO/
             ├── COD10K/
-            └── NC4K/
+            ├── NC4K/
+            └── CHAMELEON/
 ```
 
 ### 息肉分割
@@ -164,12 +168,17 @@ data/polyps/archives/CVC-ClinicDB.zip
 powershell -ExecutionPolicy Bypass -File scripts/prepare_local_polyp_data.ps1
 ```
 
-准备完成后数据位于 `data/polyps/prepared/`：
+方式二只从上述三个归档重建训练集、Kvasir 和 CVC-ClinicDB；扩展测试集需要使用 PraNet 测试集来源另行补齐。
+
+完整准备后数据位于 `data/polyps/prepared/`：
 
 ```text
 train/                 1450 对（图像 + 掩码）
 test/Kvasir            100 对
 test/CVC-ClinicDB       62 对
+test/CVC-300            60 对
+test/CVC-ColonDB        380 对
+test/ETIS               196 对
 ```
 
 校验数据完整性：
@@ -178,7 +187,7 @@ test/CVC-ClinicDB       62 对
 python -m sam2unet.data validate data/polyps/prepared
 ```
 
-**扩展测试集**（规划中）：
+**扩展测试集**：
 
 准备额外的息肉测试集用于跨数据集泛化评估：
 
@@ -187,19 +196,19 @@ python -m sam2unet.data validate data/polyps/prepared
 | CVC-300     | 60   | 结肠镜图像，息肉边界清晰          |
 | CVC-ColonDB | 380  | 结肠镜数据库，包含小息肉          |
 | ETIS-Larib  | 196  | 高分辨率内窥镜图像                |
-| CHAMELEON   | 76   | 挑战性样本，息肉与背景对比度低    |
 
-### 伪装目标检测（规划中）
+### 伪装目标检测（数据已就绪）
 
-训练集：CAMO + COD10K，测试集：NC4K。
+训练集：CAMO + COD10K；测试集：CAMO、COD10K、NC4K、CHAMELEON。
 
-数据将准备在 `data/cod/prepared/` 下，配置文件为 `configs/cod_train.json`。
+数据位于 `data/cod/prepared/`，来源与校验记录见 `configs/cod_sources.json`。数据加载器 `cod_dataset.py` 和训练配置 `configs/cod_train.json` 仍在规划中。
 
 | 数据集  | 规模   | 说明                                |
 | ------- | ------ | ----------------------------------- |
-| CAMO    | 1500   | 1250 训练 + 250 测试，伪装物体分割  |
+| CAMO    | 1250   | 1000 训练 + 250 测试，伪装物体分割  |
 | COD10K  | 5066   | 3040 训练 + 2026 测试，大规模 COD   |
 | NC4K    | 4121   | 纯测试集，自然场景伪装目标          |
+| CHAMELEON | 76   | 纯测试集，经典伪装目标分割基准      |
 
 ## 使用方法
 

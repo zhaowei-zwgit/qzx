@@ -12,5 +12,21 @@
   "cvc_clinicdb": {
     "archive": "data/polyps/archives/CVC-ClinicDB.zip",
     "sha256": "C76EAFAE71960364B647442D3D620B9312D201059A712D257FA55E652AC45386"
+  },
+  "pranet_test": {
+    "source": "https://github.com/DengPingFan/PraNet",
+    "google_drive_file_id": "1Y2z7FD5p5y31vkZwQQomXFRB0HutHyao",
+    "archive": "data/polyps/archives/PraNet-TestDataset.zip",
+    "archive_status": "not retained because the official Google Drive transfer repeatedly timed out",
+    "datasets": {
+      "CVC-300": 60,
+      "CVC-ColonDB": 380,
+      "ETIS-LaribPolypDB": 196
+    }
+  },
+  "etis_mirror": {
+    "source": "https://github.com/Wangxlhaha/PolyDataset/tree/master/ETIS",
+    "mirror_commit": "899fd0908f47e18982d67cd5077eaf012ddfb6df",
+    "expected_pairs": 196
   }
 }

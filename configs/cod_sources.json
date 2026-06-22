@@ -1,0 +1,41 @@
+{
+  "camo": {
+    "primary_source": "https://sites.google.com/view/ltnghia/research/camo",
+    "mirror": "https://github.com/kruthiningaraj/camouflaged-object-detection",
+    "mirror_commit": "ac3939942f2a02db17966ee28ecc56a1fb047ab4",
+    "expected_counts": {
+      "train": 1000,
+      "test": 250
+    }
+  },
+  "cod10k": {
+    "primary_source": "https://github.com/DengPingFan/SINet",
+    "training_mirror": "https://huggingface.co/datasets/Umair2002/Camouflage-Train-Dataset",
+    "training_archive": "data/cod/archives/Camouflage-TrainDataset.zip",
+    "training_archive_sha256": "6E7D3EED618B2B9B0CF158B0933A0576B4EFD7C94AB7A8ADF518A44185C0D586",
+    "training_split_method": "1000 CAMO images matched by exact SHA256; the remaining 3040 pairs are COD10K",
+    "test_mirror": "https://modelscope.cn/datasets/Vegetabot/cod_dataset",
+    "test_container_sha256": "82DA691FC8D6ECD732DE95F5BFAB340558FFD7453C5777B52D539046091FB1AE",
+    "expected_counts": {
+      "train": 3040,
+      "test": 2026
+    }
+  },
+  "nc4k": {
+    "primary_source": "https://github.com/JingZhang617/COD-Rank-Localize-and-Segment",
+    "mirror": "https://huggingface.co/datasets/PassbyGrocer/NC4K",
+    "mirror_revision": "22e50a54294e12c857454e3de61d60143008e52c",
+    "expected_counts": {
+      "test": 4121,
+      "instances": 4121
+    }
+  },
+  "chameleon": {
+    "primary_distribution": "https://github.com/DengPingFan/SINet",
+    "mirror": "https://github.com/chen-xing6/SINet_jittor",
+    "mirror_commit": "75524acfdbbb23eeb88e577f91f04bbceba5fae0",
+    "expected_counts": {
+      "test": 76
+    }
+  }
+}

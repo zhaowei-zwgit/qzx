@@ -13,7 +13,13 @@ from PIL import Image
 
 
 SUPPORTED_EXTENSIONS = {".bmp", ".jpeg", ".jpg", ".png", ".tif", ".tiff"}
-TEST_DATASETS = ("Kvasir", "CVC-ClinicDB")
+TEST_DATASETS = {
+    "Kvasir": "Kvasir",
+    "CVC-ClinicDB": "CVC-ClinicDB",
+    "CVC-300": "CVC-300",
+    "CVC-ColonDB": "CVC-ColonDB",
+    "ETIS-LaribPolypDB": "ETIS",
+}
 Pair = Tuple[Path, Path]
 
 
@@ -128,6 +134,48 @@ def _copy_pairs(pairs: Iterable[Pair], image_dir: Path, mask_dir: Path) -> list[
     return copied
 
 
+def prepare_pranet_polyp_tests(
+    test_source: Path,
+    output_root: Path,
+    datasets: Sequence[str] | None = None,
+) -> Dict[str, int]:
+    """Add selected PraNet test sets without replacing prepared training data."""
+    test_source = Path(test_source)
+    output_root = Path(output_root)
+    source_by_output = {
+        output_dataset: source_dataset
+        for source_dataset, output_dataset in TEST_DATASETS.items()
+    }
+    requested = tuple(datasets) if datasets is not None else tuple(source_by_output)
+    unknown = sorted(set(requested) - set(source_by_output))
+    if unknown:
+        raise ValueError(f"unsupported PraNet test datasets: {unknown}")
+
+    summary: Dict[str, int] = {}
+    for output_dataset in requested:
+        source_dataset = source_by_output[output_dataset]
+        target_root = output_root / "test" / output_dataset
+        _require_empty_output(target_root)
+        pairs = discover_pairs(
+            test_source / source_dataset / "images",
+            test_source / source_dataset / "masks",
+        )
+        copied = _copy_pairs(
+            pairs,
+            target_root / "images",
+            target_root / "masks",
+        )
+        _write_manifest(
+            output_root,
+            f"test-{output_dataset}",
+            copied,
+            dataset=output_dataset,
+            split="test",
+        )
+        summary[f"test/{output_dataset}"] = len(copied)
+    return summary
+
+
 def prepare_pranet_polyp_data(
     train_source: Path,
     test_source: Path,
@@ -154,20 +202,7 @@ def prepare_pranet_polyp_data(
     )
 
     summary = {"train": len(copied_train)}
-    for dataset in TEST_DATASETS:
-        pairs = discover_pairs(
-            test_source / dataset / "images",
-            test_source / dataset / "masks",
-        )
-        copied = _copy_pairs(
-            pairs,
-            output_root / "test" / dataset / "images",
-            output_root / "test" / dataset / "masks",
-        )
-        _write_manifest(
-            output_root, f"test-{dataset}", copied, dataset=dataset, split="test"
-        )
-        summary[f"test/{dataset}"] = len(copied)
+    summary.update(prepare_pranet_polyp_tests(test_source, output_root))
     return summary
 
 
@@ -241,16 +276,22 @@ def validate_prepared_polyp_data(
 ) -> Dict[str, int]:
     """Validate all normalized image-mask pairs and optional expected counts."""
     output_root = Path(output_root)
-    locations = {
-        "train": output_root / "train",
-        "test/Kvasir": output_root / "test" / "Kvasir",
-        "test/CVC-ClinicDB": output_root / "test" / "CVC-ClinicDB",
-    }
+    expected_counts = expected_counts or {}
+    locations = {"train": output_root / "train"}
+    for dataset in TEST_DATASETS.values():
+        name = f"test/{dataset}"
+        path = output_root / "test" / dataset
+        if (
+            dataset in {"Kvasir", "CVC-ClinicDB"}
+            or path.is_dir()
+            or name in expected_counts
+        ):
+            locations[name] = path
     summary = {
         name: len(discover_pairs(path / "images", path / "masks"))
         for name, path in locations.items()
     }
-    for name, expected in (expected_counts or {}).items():
+    for name, expected in expected_counts.items():
         actual = summary.get(name)
         if actual != expected:
             raise ValueError(f"expected {expected} pairs for {name}, found {actual}")
@@ -274,6 +315,14 @@ def _parser() -> argparse.ArgumentParser:
     validate.add_argument("--train-count", type=int, default=1450)
     validate.add_argument("--kvasir-count", type=int, default=100)
     validate.add_argument("--clinic-count", type=int, default=62)
+    validate.add_argument("--cvc-300-count", type=int, default=60)
+    validate.add_argument("--colon-count", type=int, default=380)
+    validate.add_argument("--etis-count", type=int, default=196)
+    validate.add_argument(
+        "--basic-only",
+        action="store_true",
+        help="require only the train, Kvasir, and CVC-ClinicDB splits",
+    )
     return parser
 
 
@@ -291,13 +340,22 @@ def main(argv: Sequence[str] | None = None) -> int:
             args.output_root,
         )
     else:
+        expected_counts = {
+            "train": args.train_count,
+            "test/Kvasir": args.kvasir_count,
+            "test/CVC-ClinicDB": args.clinic_count,
+        }
+        if not args.basic_only:
+            expected_counts.update(
+                {
+                    "test/CVC-300": args.cvc_300_count,
+                    "test/CVC-ColonDB": args.colon_count,
+                    "test/ETIS": args.etis_count,
+                }
+            )
         summary = validate_prepared_polyp_data(
             args.output_root,
-            expected_counts={
-                "train": args.train_count,
-                "test/Kvasir": args.kvasir_count,
-                "test/CVC-ClinicDB": args.clinic_count,
-            },
+            expected_counts=expected_counts,
         )
     print(json.dumps(summary, indent=2))
     return 0
