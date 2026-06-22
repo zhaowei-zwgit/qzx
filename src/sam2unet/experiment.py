@@ -1,4 +1,4 @@
-"""Train, evaluate, and smoke-test SAM2-UNet polyp segmentation models."""
+"""Train, evaluate, and smoke-test SAM2-UNet binary segmentation models."""
 
 from __future__ import annotations
 

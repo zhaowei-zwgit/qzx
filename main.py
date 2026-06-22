@@ -1,4 +1,4 @@
-"""SAM2-UNet 息肉分割实验的根目录统一运行入口。"""
+"""SAM2-UNet 多任务二值分割实验的根目录统一运行入口。"""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ BRIDGE_MODES = ("rfb", "static", "parameternet", "darkir", "full")
 def _parser() -> argparse.ArgumentParser:
     """创建根入口命令行参数解析器。"""
     parser = argparse.ArgumentParser(
-        description="运行 SAM2-UNet 小规模测试、正式训练或模型评估。"
+        description="运行 SAM2-UNet 多任务二值分割实验的小规模测试、正式训练或模型评估。"
     )
     parser.add_argument(
         "--mode",

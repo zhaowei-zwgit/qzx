@@ -51,12 +51,12 @@
 
 | 数据集         | 角色     | 规模            | 配置键         | 状态     |
 | -------------- | -------- | --------------- | -------------- | -------- |
-| CAMO           | 训练+测试 | 1000 / 250     | `CAMO`         | ✅ 数据就绪 |
-| COD10K         | 训练+测试 | 3040 / 2026    | `COD10K`       | ✅ 数据就绪 |
-| NC4K           | 仅测试   | 4121            | `NC4K`         | ✅ 数据就绪 |
-| CHAMELEON      | 仅测试   | 76              | `CHAMELEON`    | ✅ 数据就绪 |
+| CAMO           | 训练+测试 | 1000 / 250     | `CAMO`         | ✅ 已实现 |
+| COD10K         | 训练+测试 | 3040 / 2026    | `COD10K`       | ✅ 已实现 |
+| NC4K           | 仅测试   | 4121            | `NC4K`         | ✅ 已实现 |
+| CHAMELEON      | 仅测试   | 76              | `CHAMELEON`    | ✅ 已实现 |
 
-COD 数据已准备并校验；对应的数据加载器和训练配置仍在规划中。
+COD 数据已准备并校验；对应的数据加载器和训练配置已实现，可直接通过 `main.py` 使用。
 
 通过 `--config` 参数切换不同任务的数据集和训练配置。每个配置文件独立定义数据路径、输入尺寸、训练超参和评估指标。跨数据集测试（在未见过的数据集上评估）用于衡量模型的泛化能力。
 
@@ -68,7 +68,7 @@ qzx/
 ├── configs/
 │   ├── polyp_train.json             # 息肉分割训练配置
 │   ├── polyp_sources.json           # 息肉数据集来源与校验
-│   ├── cod_train.json               # 伪装目标检测训练配置（规划中）
+│   ├── cod_train.json               # 伪装目标检测训练配置
 │   ├── cod_sources.json             # COD 数据集来源与校验
 │   └── sam2/                        # SAM2 模型配置
 ├── src/sam2unet/
@@ -79,7 +79,7 @@ qzx/
 │   ├── fusion.py                    # 核心融合模型（5 种消融模式）
 │   ├── training.py                  # 损失函数、指标、训练/评估循环、checkpoint I/O
 │   ├── polyp_dataset.py             # 息肉数据集（CSV manifest）
-│   ├── cod_dataset.py               # 伪装目标数据集（规划中）
+│   ├── cod_dataset.py               # 伪装目标数据集
 │   ├── data.py                      # 数据准备 CLI
 │   ├── experiment.py                # 实验 CLI（smoke / train / evaluate）
 │   └── monitor.py                   # 实时训练监控（TensorBoard + tqdm）
@@ -197,11 +197,11 @@ python -m sam2unet.data validate data/polyps/prepared
 | CVC-ColonDB | 380  | 结肠镜数据库，包含小息肉          |
 | ETIS-Larib  | 196  | 高分辨率内窥镜图像                |
 
-### 伪装目标检测（数据已就绪）
+### 伪装目标检测（已实现）
 
 训练集：CAMO + COD10K；测试集：CAMO、COD10K、NC4K、CHAMELEON。
 
-数据位于 `data/cod/prepared/`，来源与校验记录见 `configs/cod_sources.json`。数据加载器 `cod_dataset.py` 和训练配置 `configs/cod_train.json` 仍在规划中。
+数据位于 `data/cod/prepared/`，来源与校验记录见 `configs/cod_sources.json`。数据加载器 `src/sam2unet/cod_dataset.py` 与训练配置 `configs/cod_train.json` 已实现，可通过 `main.py` 的 `smoke`、`train` 与 `evaluate` 模式直接使用。
 
 | 数据集  | 规模   | 说明                                |
 | ------- | ------ | ----------------------------------- |
@@ -209,6 +209,8 @@ python -m sam2unet.data validate data/polyps/prepared
 | COD10K  | 5066   | 3040 训练 + 2026 测试，大规模 COD   |
 | NC4K    | 4121   | 纯测试集，自然场景伪装目标          |
 | CHAMELEON | 76   | 纯测试集，经典伪装目标分割基准      |
+
+当前实现按二值分割训练与评估。NC4K 会评估其二值掩码；原始实例/annotations 文件仍保留在准备后的数据目录中，但当前二值损失与指标不会使用这些实例级标注。
 
 ## 使用方法
 
@@ -226,6 +228,9 @@ python main.py --help
 python main.py
 # 或显式指定
 python main.py --mode smoke
+
+# COD 真实数据 smoke
+python main.py --mode smoke --config configs/cod_train.json --device cpu
 ```
 
 ### 正式训练
@@ -236,7 +241,7 @@ python main.py --mode smoke
 # 息肉分割 — 完整融合模型（训练+跨数据集测试）
 python main.py --mode train --config configs/polyp_train.json --bridge-mode full --epochs 20
 
-# 伪装目标检测（数据就绪后）
+# 伪装目标检测
 python main.py --mode train --config configs/cod_train.json --bridge-mode full --epochs 30
 
 # 消融实验：逐个训练各桥接模式
@@ -258,6 +263,9 @@ python main.py --mode train --config configs/polyp_train.json --bridge-mode full
 
 ```powershell
 python main.py --mode evaluate --config configs/polyp_train.json --bridge-mode full --checkpoint runs/polyps/full/best.pt
+
+# COD 评估
+python main.py --mode evaluate --config configs/cod_train.json --bridge-mode full --checkpoint runs/cod/full/best.pt
 ```
 
 ### 常用参数
