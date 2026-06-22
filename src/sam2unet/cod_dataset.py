@@ -56,6 +56,14 @@ class CODDirectoryDataset(Dataset):
         if not self._pairs:
             raise ValueError(f"{self.dataset_name}: no image-mask pairs found")
 
+    @staticmethod
+    def _format_stem_list(stems: list[str], limit: int = 8) -> str:
+        preview = stems[:limit]
+        rendered = ", ".join(repr(stem) for stem in preview)
+        if len(stems) > limit:
+            rendered = f"{rendered}, ... (+{len(stems) - limit} more)"
+        return f"[{rendered}]"
+
     def _collect_files(self, directory: Path) -> Dict[str, Path]:
         indexed: Dict[str, Path] = {}
         for path in sorted(directory.iterdir(), key=lambda candidate: candidate.name.casefold()):
@@ -80,7 +88,13 @@ class CODDirectoryDataset(Dataset):
 
         paired_stems = sorted(image_files.keys() & mask_files.keys())
         if len(paired_stems) != len(image_files) or len(paired_stems) != len(mask_files):
-            raise ValueError(f"{self.dataset_name}: unmatched image and mask files")
+            image_only = sorted(set(image_files) - set(mask_files))
+            mask_only = sorted(set(mask_files) - set(image_files))
+            raise ValueError(
+                f"{self.dataset_name}: unmatched image and mask files "
+                f"(image-only stems={self._format_stem_list(image_only)}, "
+                f"mask-only stems={self._format_stem_list(mask_only)})"
+            )
 
         return [
             (stem, image_files[stem], mask_files[stem])
@@ -92,9 +106,14 @@ class CODDirectoryDataset(Dataset):
 
     def __getitem__(self, index: int) -> Dict[str, object]:
         _, image_path, mask_path = self._pairs[index]
-        with Image.open(image_path) as source_image:
+        with Image.open(image_path) as source_image, Image.open(mask_path) as source_mask:
+            if source_image.size != source_mask.size:
+                raise ValueError(
+                    f"{self.dataset_name}: size mismatch for stem {image_path.stem!r} "
+                    f"(image={image_path} size={source_image.size}, "
+                    f"mask={mask_path} size={source_mask.size})"
+                )
             image = source_image.convert("RGB")
-        with Image.open(mask_path) as source_mask:
             mask = source_mask.convert("L")
 
         if self.training:
