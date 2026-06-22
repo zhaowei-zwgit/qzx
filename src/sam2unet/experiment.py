@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import argparse
+from collections.abc import Mapping
 import json
 import random
 from pathlib import Path
-from typing import Dict, Mapping, Sequence
+from typing import Dict, Sequence
 
 import numpy as np
 import torch
@@ -113,12 +114,36 @@ def _build_manifest_datasets(
     return train_dataset, test_datasets
 
 
+def _validate_cod_mapping(
+    config: Mapping[str, object], field_name: str
+) -> Dict[str, str | Path]:
+    message = (
+        f"{field_name} must be a non-empty mapping of dataset names to non-empty "
+        "str or Path roots"
+    )
+    if field_name not in config:
+        raise ValueError(message)
+
+    raw_value = config[field_name]
+    if not isinstance(raw_value, Mapping) or not raw_value:
+        raise ValueError(message)
+
+    validated: Dict[str, str | Path] = {}
+    for dataset_name, root in raw_value.items():
+        if not isinstance(dataset_name, str) or not dataset_name:
+            raise ValueError(f"{field_name} keys must be non-empty string dataset names")
+        if not isinstance(root, (str, Path)) or (isinstance(root, str) and not root):
+            raise ValueError(f"{field_name} values must be non-empty str or Path roots")
+        validated[dataset_name] = root
+    return validated
+
+
 def _build_cod_datasets(
     config: Mapping[str, object], config_path: Path, image_size
 ):
-    train_sets = dict(config["train_sets"])
-    if not train_sets:
-        raise ValueError("cod_directory requires at least one train set")
+    train_sets = _validate_cod_mapping(config, "train_sets")
+    test_sets = _validate_cod_mapping(config, "test_sets")
+
     train_datasets = [
         CODDirectoryDataset(
             _resolve(root, config_path),
@@ -130,9 +155,6 @@ def _build_cod_datasets(
         for name, root in train_sets.items()
     ]
 
-    test_sets = dict(config["test_sets"])
-    if not test_sets:
-        raise ValueError("cod_directory requires at least one test set")
     test_datasets = {
         name: CODDirectoryDataset(
             _resolve(root, config_path),

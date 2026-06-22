@@ -4,7 +4,9 @@ from pathlib import Path
 
 import pytest
 from PIL import Image
+from torch.utils.data import ConcatDataset
 
+from sam2unet.cod_dataset import CODDirectoryDataset
 from sam2unet.experiment import build_loaders, main
 
 
@@ -40,9 +42,8 @@ def _make_cod_root(root: Path) -> Path:
     return root
 
 
-def test_build_loaders_combines_cod_training_sets_and_names_tests(tmp_path: Path):
-    config_path = tmp_path / "config.json"
-    config = {
+def _cod_loader_config(tmp_path: Path) -> dict[str, object]:
+    return {
         "dataset_type": "cod_directory",
         "train_sets": {
             "CAMO": str(_make_cod_root(tmp_path / "train" / "CAMO")),
@@ -59,12 +60,108 @@ def test_build_loaders_combines_cod_training_sets_and_names_tests(tmp_path: Path
         "num_workers": 0,
     }
 
+
+def test_build_loaders_combines_cod_training_sets_and_names_tests(tmp_path: Path):
+    config_path = tmp_path / "config.json"
+    config = _cod_loader_config(tmp_path)
+
     train_loader, test_loaders = build_loaders(config, config_path)
 
+    assert isinstance(train_loader.dataset, ConcatDataset)
     assert len(train_loader.dataset) == 2
+    assert [type(dataset) for dataset in train_loader.dataset.datasets] == [
+        CODDirectoryDataset,
+        CODDirectoryDataset,
+    ]
+    assert [dataset.dataset_name for dataset in train_loader.dataset.datasets] == [
+        "CAMO",
+        "COD10K",
+    ]
+
+    train_batch = next(iter(train_loader))
+    assert train_batch["image"].shape == (1, 3, 16, 16)
+    assert train_batch["mask"].shape == (1, 1, 16, 16)
+    assert train_batch["dataset"][0] in {"CAMO", "COD10K"}
+    assert train_batch["split"][0] == "train"
+
     assert set(test_loaders) == {"CAMO", "COD10K", "NC4K", "CHAMELEON"}
     for name, loader in test_loaders.items():
         assert loader.dataset.dataset_name == name
+        sample = loader.dataset[0]
+        assert sample["dataset"] == name
+        assert sample["split"] == "test"
+        assert sample["image"].shape == (3, 16, 16)
+        assert sample["mask"].shape == (1, 16, 16)
+
+
+@pytest.mark.parametrize(
+    ("field", "remove_field", "config_update", "message"),
+    [
+        ("train_sets", True, {}, "train_sets"),
+        ("train_sets", False, {"train_sets": None}, "train_sets"),
+        ("train_sets", False, {"train_sets": {}}, "train_sets"),
+        ("train_sets", False, {"train_sets": [("CAMO", "ignored")]}, "train_sets"),
+        ("train_sets", False, {"train_sets": "CAMO"}, "train_sets"),
+        ("test_sets", True, {}, "test_sets"),
+        ("test_sets", False, {"test_sets": None}, "test_sets"),
+        ("test_sets", False, {"test_sets": {}}, "test_sets"),
+        ("test_sets", False, {"test_sets": [("CAMO", "ignored")]}, "test_sets"),
+        ("test_sets", False, {"test_sets": "CAMO"}, "test_sets"),
+    ],
+)
+def test_build_loaders_validates_cod_mapping_fields_before_dataset_indexing(
+    tmp_path: Path,
+    field: str,
+    remove_field: bool,
+    config_update: dict[str, object],
+    message: str,
+):
+    config = {
+        "dataset_type": "cod_directory",
+        "train_sets": {"CAMO": str(tmp_path / "missing-train-root")},
+        "test_sets": {"CAMO": str(tmp_path / "missing-test-root")},
+        "input_size": [16, 16],
+        "batch_size": 1,
+        "num_workers": 0,
+    }
+    if remove_field:
+        del config[field]
+    config.update(config_update)
+
+    with pytest.raises(ValueError, match=message):
+        build_loaders(config, tmp_path / "config.json")
+
+
+@pytest.mark.parametrize(
+    ("field", "mapping_value", "message"),
+    [
+        ("train_sets", {"": "ignored"}, "train_sets"),
+        ("train_sets", {1: "ignored"}, "train_sets"),
+        ("train_sets", {"CAMO": ""}, "train_sets"),
+        ("train_sets", {"CAMO": None}, "train_sets"),
+        ("train_sets", {"CAMO": 7}, "train_sets"),
+        ("test_sets", {"": "ignored"}, "test_sets"),
+        ("test_sets", {1: "ignored"}, "test_sets"),
+        ("test_sets", {"CAMO": ""}, "test_sets"),
+        ("test_sets", {"CAMO": None}, "test_sets"),
+        ("test_sets", {"CAMO": 7}, "test_sets"),
+    ],
+)
+def test_build_loaders_validates_cod_mapping_entries_before_dataset_indexing(
+    tmp_path: Path, field: str, mapping_value: dict[object, object], message: str
+):
+    config = {
+        "dataset_type": "cod_directory",
+        "train_sets": {"CAMO": str(tmp_path / "missing-train-root")},
+        "test_sets": {"CAMO": str(tmp_path / "missing-test-root")},
+        "input_size": [16, 16],
+        "batch_size": 1,
+        "num_workers": 0,
+    }
+    config[field] = mapping_value
+
+    with pytest.raises(ValueError, match=message):
+        build_loaders(config, tmp_path / "config.json")
 
 
 def test_build_loaders_rejects_unknown_dataset_type(tmp_path: Path):
