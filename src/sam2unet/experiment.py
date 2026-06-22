@@ -12,8 +12,9 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils.data import DataLoader, Subset
+from torch.utils.data import ConcatDataset, DataLoader, Subset
 
+from .cod_dataset import CODDirectoryDataset
 from .fusion import SAM2UNetFusion
 from .monitor import TrainingMonitor
 from .polyp_dataset import PolypManifestDataset
@@ -95,6 +96,56 @@ def _limited_dataset(dataset, limit: int | None):
     return Subset(dataset, range(limit))
 
 
+def _build_manifest_datasets(
+    config: Mapping[str, object], config_path: Path, image_size
+):
+    train_dataset = PolypManifestDataset(
+        _resolve(config["train_manifest"], config_path),
+        image_size=image_size,
+        training=True,
+    )
+    test_datasets = {
+        name: PolypManifestDataset(
+            _resolve(manifest, config_path), image_size=image_size, training=False
+        )
+        for name, manifest in dict(config["test_sets"]).items()
+    }
+    return train_dataset, test_datasets
+
+
+def _build_cod_datasets(
+    config: Mapping[str, object], config_path: Path, image_size
+):
+    train_sets = dict(config["train_sets"])
+    if not train_sets:
+        raise ValueError("cod_directory requires at least one train set")
+    train_datasets = [
+        CODDirectoryDataset(
+            _resolve(root, config_path),
+            dataset_name=name,
+            split="train",
+            image_size=image_size,
+            training=True,
+        )
+        for name, root in train_sets.items()
+    ]
+
+    test_sets = dict(config["test_sets"])
+    if not test_sets:
+        raise ValueError("cod_directory requires at least one test set")
+    test_datasets = {
+        name: CODDirectoryDataset(
+            _resolve(root, config_path),
+            dataset_name=name,
+            split="test",
+            image_size=image_size,
+            training=False,
+        )
+        for name, root in test_sets.items()
+    }
+    return ConcatDataset(train_datasets), test_datasets
+
+
 def build_loaders(
     config: Mapping[str, object],
     config_path: Path,
@@ -104,11 +155,18 @@ def build_loaders(
     image_size = tuple(config.get("input_size", (352, 352)))
     workers = int(config.get("num_workers", 0))
     batch_size = int(config.get("batch_size", 1))
-    train_dataset = PolypManifestDataset(
-        _resolve(config["train_manifest"], config_path),
-        image_size=image_size,
-        training=True,
-    )
+    dataset_type = str(config.get("dataset_type", "manifest"))
+    if dataset_type == "manifest":
+        train_dataset, test_datasets = _build_manifest_datasets(
+            config, config_path, image_size
+        )
+    elif dataset_type == "cod_directory":
+        train_dataset, test_datasets = _build_cod_datasets(
+            config, config_path, image_size
+        )
+    else:
+        raise ValueError(f"unsupported dataset_type: {dataset_type}")
+
     train_loader = DataLoader(
         _limited_dataset(train_dataset, train_limit),
         batch_size=batch_size,
@@ -117,10 +175,7 @@ def build_loaders(
         pin_memory=torch.cuda.is_available(),
     )
     test_loaders = {}
-    for name, manifest in dict(config["test_sets"]).items():
-        dataset = PolypManifestDataset(
-            _resolve(manifest, config_path), image_size=image_size, training=False
-        )
+    for name, dataset in test_datasets.items():
         test_loaders[name] = DataLoader(
             _limited_dataset(dataset, test_limit),
             batch_size=batch_size,
