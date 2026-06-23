@@ -1,0 +1,78 @@
+========================================
+  息肉分割（Polyp Segmentation）训练
+========================================
+
+# 1. RFB 基线
+python main.py --mode train --config configs/polyp_train.json --bridge-mode rfb --epochs 20
+
+# 2. Static 基线（1×1 Conv）
+python main.py --mode train --config configs/polyp_train.json --bridge-mode static --epochs 20
+
+# 3. ParameterNet（多专家动态投影）
+python main.py --mode train --config configs/polyp_train.json --bridge-mode parameternet --epochs 20
+
+# 4. DarkIR（空间+频域增强）
+python main.py --mode train --config configs/polyp_train.json --bridge-mode darkir --epochs 20
+
+# 5. Full（完整融合）
+python main.py --mode train --config configs/polyp_train.json --bridge-mode full --epochs 20
+
+
+========================================
+  息肉分割（Polyp Segmentation）测试
+========================================
+
+# 6. RFB 评估
+python main.py --mode evaluate --config configs/polyp_train.json --bridge-mode rfb --checkpoint runs/polyps/rfb/best.pt
+
+# 7. Static 评估
+python main.py --mode evaluate --config configs/polyp_train.json --bridge-mode static --checkpoint runs/polyps/static/best.pt
+
+# 8. ParameterNet 评估
+python main.py --mode evaluate --config configs/polyp_train.json --bridge-mode parameternet --checkpoint runs/polyps/parameternet/best.pt
+
+# 9. DarkIR 评估
+python main.py --mode evaluate --config configs/polyp_train.json --bridge-mode darkir --checkpoint runs/polyps/darkir/best.pt
+
+# 10. Full 评估
+python main.py --mode evaluate --config configs/polyp_train.json --bridge-mode full --checkpoint runs/polyps/full/best.pt
+
+
+========================================
+  伪装目标检测（COD）训练
+========================================
+
+# 11. RFB 基线
+python main.py --mode train --config configs/cod_train.json --bridge-mode rfb --epochs 30
+
+# 12. Static 基线（1×1 Conv）
+python main.py --mode train --config configs/cod_train.json --bridge-mode static --epochs 30
+
+# 13. ParameterNet（多专家动态投影）
+python main.py --mode train --config configs/cod_train.json --bridge-mode parameternet --epochs 30
+
+# 14. DarkIR（空间+频域增强）
+python main.py --mode train --config configs/cod_train.json --bridge-mode darkir --epochs 30
+
+# 15. Full（完整融合）
+python main.py --mode train --config configs/cod_train.json --bridge-mode full --epochs 30
+
+
+========================================
+  伪装目标检测（COD）测试
+========================================
+
+# 16. RFB 评估
+python main.py --mode evaluate --config configs/cod_train.json --bridge-mode rfb --checkpoint runs/cod/rfb/best.pt
+
+# 17. Static 评估
+python main.py --mode evaluate --config configs/cod_train.json --bridge-mode static --checkpoint runs/cod/static/best.pt
+
+# 18. ParameterNet 评估
+python main.py --mode evaluate --config configs/cod_train.json --bridge-mode parameternet --checkpoint runs/cod/parameternet/best.pt
+
+# 19. DarkIR 评估
+python main.py --mode evaluate --config configs/cod_train.json --bridge-mode darkir --checkpoint runs/cod/darkir/best.pt
+
+# 20. Full 评估
+python main.py --mode evaluate --config configs/cod_train.json --bridge-mode full --checkpoint runs/cod/full/best.pt
