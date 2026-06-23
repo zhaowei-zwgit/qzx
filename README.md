@@ -211,6 +211,7 @@ python -m sam2unet.data validate data/polyps/prepared
 | CHAMELEON | 76   | 纯测试集，经典伪装目标分割基准      |
 
 当前实现按二值分割训练与评估。NC4K 会评估其二值掩码；原始实例/annotations 文件仍保留在准备后的数据目录中，但当前二值损失与指标不会使用这些实例级标注。
+数据加载器会分别将图像（双线性）与二值掩码（最近邻）归一化到 `input_size`；这是为兼容上游 CHAMELEON 官方数据中的两个源尺寸不一致样本，并非下载失败。
 
 ## 使用方法
 

@@ -75,15 +75,22 @@ def test_cod_dataset_applies_synchronized_forced_flips(
     assert sample["mask"][0, -1, -1] == 1.0
 
 
-def test_cod_dataset_rejects_mismatched_image_and_mask_sizes(tmp_path: Path):
+def test_cod_dataset_normalizes_mismatched_image_and_mask_sizes(tmp_path: Path):
     root = tmp_path / "camo"
     _write_rgb_image(root / "images" / "size-check.png", size=(10, 6))
     _write_mask(root / "masks" / "size-check.png", size=(8, 8))
 
-    dataset = CODDirectoryDataset(root, dataset_name="CAMO", split="train")
+    dataset = CODDirectoryDataset(
+        root,
+        dataset_name="CAMO",
+        split="train",
+        image_size=(7, 11),
+    )
+    sample = dataset[0]
 
-    with pytest.raises(ValueError, match="CAMO.*size mismatch.*size-check.*10.*6.*8.*8"):
-        dataset[0]
+    assert sample["image"].shape == (3, 7, 11)
+    assert sample["mask"].shape == (1, 7, 11)
+    assert torch.all((sample["mask"] == 0.0) | (sample["mask"] == 1.0))
 
 
 def test_cod_dataset_rejects_unmatched_files(tmp_path: Path):

@@ -107,12 +107,6 @@ class CODDirectoryDataset(Dataset):
     def __getitem__(self, index: int) -> Dict[str, object]:
         _, image_path, mask_path = self._pairs[index]
         with Image.open(image_path) as source_image, Image.open(mask_path) as source_mask:
-            if source_image.size != source_mask.size:
-                raise ValueError(
-                    f"{self.dataset_name}: size mismatch for stem {image_path.stem!r} "
-                    f"(image={image_path} size={source_image.size}, "
-                    f"mask={mask_path} size={source_mask.size})"
-                )
             image = source_image.convert("RGB")
             mask = source_mask.convert("L")
 
@@ -124,11 +118,9 @@ class CODDirectoryDataset(Dataset):
                 image = TF.vflip(image)
                 mask = TF.vflip(mask)
 
-        image = TF.resize(
-            image,
-            self.image_size,
-            interpolation=InterpolationMode.BILINEAR,
-        )
+        # Official COD benchmarks include a few source pairs with different image/mask sizes,
+        # so both are normalized independently to the configured input size here.
+        image = TF.resize(image, self.image_size, interpolation=InterpolationMode.BILINEAR)
         mask = TF.resize(mask, self.image_size, interpolation=InterpolationMode.NEAREST)
         image_tensor = TF.normalize(TF.to_tensor(image), self.image_mean, self.image_std)
         mask_tensor = (TF.to_tensor(mask) >= 0.5).to(torch.float32)
