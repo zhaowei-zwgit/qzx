@@ -213,6 +213,8 @@ def build_model(
     device: torch.device,
     bridge_mode: str,
     smoke: bool = False,
+    enable_spatial: bool | None = None,
+    enable_frequency: bool | None = None,
 ) -> SAM2UNetFusion:
     kwargs = {
         "bridge_mode": bridge_mode,
@@ -220,6 +222,10 @@ def build_model(
         "model_cfg": str(config.get("model_cfg", DEFAULT_MODEL_CONFIG)),
         "sam_device": str(device),
     }
+    if enable_spatial is not None:
+        kwargs["enable_spatial"] = enable_spatial
+    if enable_frequency is not None:
+        kwargs["enable_frequency"] = enable_frequency
     if smoke:
         smoke_config = dict(config.get("smoke", {}))
         kwargs.update(
@@ -356,6 +362,18 @@ def _common_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--output-root", type=Path, default=None)
     parser.add_argument("--limit-train", type=int, default=None)
     parser.add_argument("--limit-test", type=int, default=None)
+    parser.add_argument(
+        "--enable-spatial",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="启用 DarkIR 空间分支（--no-enable-spatial 禁用）",
+    )
+    parser.add_argument(
+        "--enable-frequency",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="启用 DarkIR 频域分支（--no-enable-frequency 禁用）",
+    )
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -390,7 +408,11 @@ def _train_command(args, config, device, config_path) -> int:
     train_loader, test_loaders = build_loaders(
         config, config_path, args.limit_train, args.limit_test
     )
-    model = build_model(config, device, bridge_mode)
+    model = build_model(
+        config, device, bridge_mode,
+        enable_spatial=args.enable_spatial,
+        enable_frequency=args.enable_frequency,
+    )
     output_dir = _output_root(args, config, bridge_mode)
     monitor_enabled = not getattr(args, "no_monitor", False)
     summary = run_training(
@@ -404,7 +426,11 @@ def _train_command(args, config, device, config_path) -> int:
 def _evaluate_command(args, config, device, config_path) -> int:
     bridge_mode = args.bridge_mode or str(config.get("bridge_modes", ["full"])[-1])
     _, test_loaders = build_loaders(config, config_path, 1, args.limit_test)
-    model = build_model(config, device, bridge_mode)
+    model = build_model(
+        config, device, bridge_mode,
+        enable_spatial=args.enable_spatial,
+        enable_frequency=args.enable_frequency,
+    )
     load_training_checkpoint(args.checkpoint, model, map_location=device)
     results = _evaluate_sets(model, test_loaders, device)
     _write_json(_output_root(args, config, bridge_mode) / "evaluation.json", results)

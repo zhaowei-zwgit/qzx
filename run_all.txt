@@ -76,3 +76,37 @@ python main.py --mode evaluate --config configs/cod_train.json --bridge-mode dar
 
 # 20. Full 评估
 python main.py --mode evaluate --config configs/cod_train.json --bridge-mode full --checkpoint runs/cod/full/best.pt
+
+
+========================================
+  第二层消融：DarkIR 空间/频域分支独立消融
+========================================
+
+# 21. 息肉 — 仅空间分支（禁用频域）
+python main.py --mode train --config configs/polyp_train.json --bridge-mode darkir --no-enable-frequency --epochs 20 --output-root runs/polyps/darkir-spatial-only
+
+# 22. 息肉 — 仅频域分支（禁用空间）
+python main.py --mode train --config configs/polyp_train.json --bridge-mode darkir --no-enable-spatial --epochs 20 --output-root runs/polyps/darkir-freq-only
+
+# 23. COD — 仅空间分支（禁用频域）
+python main.py --mode train --config configs/cod_train.json --bridge-mode darkir --no-enable-frequency --epochs 30 --output-root runs/cod/darkir-spatial-only
+
+# 24. COD — 仅频域分支（禁用空间）
+python main.py --mode train --config configs/cod_train.json --bridge-mode darkir --no-enable-spatial --epochs 30 --output-root runs/cod/darkir-freq-only
+
+
+========================================
+  第二层消融：DarkIR 空间/频域分支评估
+========================================
+
+# 25. 息肉 — 仅空间分支评估
+python main.py --mode evaluate --config configs/polyp_train.json --bridge-mode darkir --checkpoint runs/polyps/darkir-spatial-only/best.pt --output-root runs/polyps/darkir-spatial-only
+
+# 26. 息肉 — 仅频域分支评估
+python main.py --mode evaluate --config configs/polyp_train.json --bridge-mode darkir --checkpoint runs/polyps/darkir-freq-only/best.pt --output-root runs/polyps/darkir-freq-only
+
+# 27. COD — 仅空间分支评估
+python main.py --mode evaluate --config configs/cod_train.json --bridge-mode darkir --checkpoint runs/cod/darkir-spatial-only/best.pt --output-root runs/cod/darkir-spatial-only
+
+# 28. COD — 仅频域分支评估
+python main.py --mode evaluate --config configs/cod_train.json --bridge-mode darkir --checkpoint runs/cod/darkir-freq-only/best.pt --output-root runs/cod/darkir-freq-only

@@ -48,6 +48,18 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help="禁用 TensorBoard 实时监控和 tqdm 进度条",
     )
+    parser.add_argument(
+        "--enable-spatial",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="启用 DarkIR 空间分支（--no-enable-spatial 禁用）",
+    )
+    parser.add_argument(
+        "--enable-frequency",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="启用 DarkIR 频域分支（--no-enable-frequency 禁用）",
+    )
     return parser
 
 
@@ -87,6 +99,10 @@ def build_experiment_argv(args: argparse.Namespace) -> list[str]:
     _append_option(arguments, "--output-root", args.output_root)
     _append_option(arguments, "--limit-train", args.limit_train)
     _append_option(arguments, "--limit-test", args.limit_test)
+    if args.enable_spatial is not None:
+        arguments.extend(("--enable-spatial" if args.enable_spatial else "--no-enable-spatial",))
+    if args.enable_frequency is not None:
+        arguments.extend(("--enable-frequency" if args.enable_frequency else "--no-enable-frequency",))
     if args.mode == "train":
         _append_option(arguments, "--epochs", args.epochs)
         _append_option(arguments, "--resume", args.resume)
